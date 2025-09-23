@@ -17,7 +17,7 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
       height: 240,
       parent: this.host.nativeElement,
       pixelArt: true,
-      physics: { default: 'arcade', arcade: { gravity: {x : 0 , y: 0 }, debug: false } },
+      physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, debug: false } },
       scene: [MapScene]
     };
     this.game = new Phaser.Game(config);
@@ -33,6 +33,7 @@ class MapScene extends Phaser.Scene {
   private walls?: Phaser.Tilemaps.TilemapLayer;
   private keyAttack: any;
   private isAttacking = false;
+  private wasd!: Record<'up' | 'left' | 'down' | 'right', Phaser.Input.Keyboard.Key>;
 
   private facing: 'down' | 'right' | 'up' | 'left' = "down";
 
@@ -45,7 +46,7 @@ class MapScene extends Phaser.Scene {
 
     // sprite del player
     this.load.spritesheet('player', 'assets/sprites/player.png', {
-        frameWidth: 48, frameHeight: 48
+      frameWidth: 48, frameHeight: 48
     });
   }
 
@@ -63,36 +64,42 @@ class MapScene extends Phaser.Scene {
     this.walls?.setCollisionByProperty({ collider: true });
 
 
-      // --- animazioni ---
-// Idle: prendi tutta la riga
-  makeRowAnim(this, 'idle-down',  0, { fps: 6 });
-  makeRowAnim(this, 'idle-right', 1, { fps: 6 });
-  makeRowAnim(this, 'idle-up',    2, { fps: 6 });
+    // --- animazioni ---
+    // Idle: prendi tutta la riga
+    makeRowAnim(this, 'idle-down', 0, { fps: 6 });
+    makeRowAnim(this, 'idle-right', 1, { fps: 6 });
+    makeRowAnim(this, 'idle-up', 2, { fps: 6 });
 
-  // Move: solo i primi 6 frame della riga (se la riga è più lunga)
-  makeRowAnim(this, 'move-down',  3, { fps: 10, count: 6 });
-  makeRowAnim(this, 'move-right', 4, { fps: 10, count: 6 });
-  makeRowAnim(this, 'move-up',    5, { fps: 10, count: 6 });
+    // Move: solo i primi 6 frame della riga (se la riga è più lunga)
+    makeRowAnim(this, 'move-down', 3, { fps: 10, count: 6 });
+    makeRowAnim(this, 'move-right', 4, { fps: 10, count: 6 });
+    makeRowAnim(this, 'move-up', 5, { fps: 10, count: 6 });
 
-  // Attack: 4 frame, riproduci una volta
-  makeRowAnim(this, 'attack-down',  6, { fps: 12, count: 4, repeat: 0 });
-  makeRowAnim(this, 'attack-right', 7, { fps: 12, count: 4, repeat: 0 });
-  makeRowAnim(this, 'attack-up',    8, { fps: 12, count: 4, repeat: 0 });
+    // Attack: 4 frame, riproduci una volta
+    makeRowAnim(this, 'attack-down', 6, { fps: 12, count: 4, repeat: 0 });
+    makeRowAnim(this, 'attack-right', 7, { fps: 12, count: 4, repeat: 0 });
+    makeRowAnim(this, 'attack-up', 8, { fps: 12, count: 4, repeat: 0 });
 
-  // Death: tutta la riga, una volta sola, con yoyo opzionale
-  makeRowAnim(this, 'death', 9, { fps: 8, repeat: 0 });
+    // Death: tutta la riga, una volta sola, con yoyo opzionale
+    makeRowAnim(this, 'death', 9, { fps: 8, repeat: 0 });
 
-  // --- player ---
-  this.player = this.physics.add.sprite(96, 96, 'player', 0);
-  this.player.setSize(24, 30).setOffset(12, 18); // hitbox un po' più bassa (opzionale)
-  this.cursors = this.input.keyboard!.createCursorKeys();
-  this.keyAttack = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    // --- player ---
+    this.player = this.physics.add.sprite(96, 96, 'player', 0);
+    this.player.setSize(24, 30).setOffset(12, 18); // hitbox un po' più bassa (opzionale)
+    this.cursors = this.input.keyboard!.createCursorKeys();
+    this.keyAttack = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.wasd = this.input.keyboard!.addKeys({
+      up: Phaser.Input.Keyboard.KeyCodes.W,
+      left: Phaser.Input.Keyboard.KeyCodes.A,
+      down: Phaser.Input.Keyboard.KeyCodes.S,
+      right: Phaser.Input.Keyboard.KeyCodes.D
+    }) as Record<'up' | 'left' | 'down' | 'right', Phaser.Input.Keyboard.Key>;
 
-  this.facing = 'down';
+    this.facing = 'down';
 
 
     // Player
-   this.player.setCollideWorldBounds(true);
+    this.player.setCollideWorldBounds(true);
 
     // Collisione player ↔ walls
     if (this.walls) this.physics.add.collider(this.player, this.walls);
@@ -109,7 +116,7 @@ class MapScene extends Phaser.Scene {
   // Firma corretta per Phaser.Scene
   override update() {
 
-    
+
     if (!this.isAttacking && Phaser.Input.Keyboard.JustDown(this.keyAttack)) {
       this.startAttack();
       return; // non fare altro in questo frame
@@ -117,16 +124,23 @@ class MapScene extends Phaser.Scene {
 
     if (this.isAttacking) return;
 
-    
+
     const speed = 140;
     let vx = 0, vy = 0;
 
 
+    const left = this.cursors.left?.isDown || this.wasd.left.isDown;
+    const right = this.cursors.right?.isDown || this.wasd.right.isDown;
+    const up = this.cursors.up?.isDown || this.wasd.up.isDown;
+    const down = this.cursors.down?.isDown || this.wasd.down.isDown;
 
-    if (this.cursors.left?.isDown)  { vx = -speed; this.facing = 'left'; }
-    else if (this.cursors.right?.isDown) { vx =  speed; this.facing = 'right'; }
-    if (this.cursors.up?.isDown)    { vy = -speed; this.facing = 'up'; }
-    else if (this.cursors.down?.isDown)  { vy =  speed; this.facing = 'down'; }
+    if (left) { vx = -speed; this.facing = 'left'; }
+    else if (right) { vx = speed; this.facing = 'right'; }
+
+    if (up) { vy = -speed; this.facing = 'up'; }
+    else if (down) { vy = speed; this.facing = 'down'; }
+
+
 
     this.player.setVelocity(vx, vy);
 
@@ -219,7 +233,7 @@ function makeRowAnim(
   toCol = Math.max(fromCol, Math.min(toCol, cols - 1));
 
   const start = row * cols + fromCol;
-  const end   = row * cols + toCol;
+  const end = row * cols + toCol;
 
   scene.anims.create({
     key,
