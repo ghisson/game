@@ -17,7 +17,7 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
       height: 240,
       parent: this.host.nativeElement,
       pixelArt: true,
-      physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, debug: true } },
+      physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, debug: false } },
       scene: [MapScene]
     };
     this.game = new Phaser.Game(config);
@@ -31,8 +31,9 @@ class MapScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private player!: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
   private walls?: Phaser.Tilemaps.TilemapLayer;
-  private death: boolean = false
+  private hit: boolean = false
   private keyAttack: any;
+  private life = 3;
   private isAttacking = false;
   private wasd!: Record<'up' | 'left' | 'down' | 'right', Phaser.Input.Keyboard.Key>;
   private slimes!: Phaser.Physics.Arcade.Group;
@@ -87,15 +88,15 @@ class MapScene extends Phaser.Scene {
     makeRowAnim(this, 'attack-right', 7, { fps: 12, count: 4, repeat: 0 });
     makeRowAnim(this, 'attack-up', 8, { fps: 12, count: 4, repeat: 0 });
 
-    // Death: tutta la riga, una volta sola, con yoyo opzionale
-    makeRowAnim(this, 'death', 9, { fps: 8, repeat: 0 });
+    // hit: tutta la riga, una volta sola, con yoyo opzionale
+    makeRowAnim(this, 'hit', 9, { fps: 8, repeat: 0 });
 
 
 
     /*
     slime
     */
-    this.slimes = this.physics.add.group({ immovable: true }); // non si muovono al contatto
+    this.slimes = this.physics.add.group();
 
     const objLayer = map.getObjectLayer('Objects');
     objLayer?.objects.forEach(o => {
@@ -106,7 +107,7 @@ class MapScene extends Phaser.Scene {
           fps: 8,
           count: 4,
           repeat: -1,
-          textureKey: 'slime', // usa lo sheet SLIME (non 'player')
+          textureKey: 'slime',
           frameWidth: 32
         });
         // Coordinate da Tiled:
@@ -121,6 +122,8 @@ class MapScene extends Phaser.Scene {
         // hitbox più tonda (opzionale)
         slime.body.setCircle(10, 6, 8); // raggio 12 dentro 32x32
         slime.setDepth(10);
+        slime.setBounce(1, 1);               // rimbalzo elastico
+        slime.setCollideWorldBounds(true);
 
         this.slimes.add(slime);
         this.time.addEvent({
@@ -132,10 +135,10 @@ class MapScene extends Phaser.Scene {
               { vx: -50, vy: 0 },  // left
               { vx: 0, vy: 50 }, // down
               { vx: 0, vy: -50 }, // up
-              { vx: -50, vy: +50}, //basso a sx
-              { vx: +50, vy: +50}, //in basso a dx
-              { vx: -50, vy: -50}, //in alto a dx
-              { vx: +50, vy: +50} //in alto a sx
+              { vx: -50, vy: +50 }, //basso a sx
+              { vx: +50, vy: +50 }, //in basso a dx
+              { vx: -50, vy: -50 }, //in alto a dx
+              { vx: +50, vy: +50 } //in alto a sx
 
             ];
             const choice = Phaser.Math.RND.pick(dirs);
@@ -143,7 +146,7 @@ class MapScene extends Phaser.Scene {
           }
         });
       }
-      
+
     });
 
 
@@ -167,22 +170,26 @@ class MapScene extends Phaser.Scene {
     this.player.setCollideWorldBounds(true);
 
     // Collisione player ↔ walls
-    if (this.walls){
+    if (this.walls) {
       this.physics.add.collider(this.slimes, this.walls);
       this.physics.add.collider(this.player, this.walls);
+      this.physics.add.collider(this.slimes, this.slimes);
     }
 
     this.physics.add.overlap(this.player, this.slimes, (obj1, obj2) => {
+      if (this.hit) return;
+
       const player = obj1 as Phaser.Physics.Arcade.Sprite;
       const slime = obj2 as Phaser.Physics.Arcade.Sprite;
       const dir = new Phaser.Math.Vector2(player.x - slime.x, player.y - slime.y).normalize();
       player.setVelocity(dir.x * 180, dir.y * 180);
       player.setTintFill(0xffffff);
       this.time.delayedCall(120, () => player.clearTint());
-      this.death = true
-      this.player.play("death", true)
+      this.hit = true
+      this.player.play("hit", true)
       this.player.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
-        this.death = false
+        this.hit = false
+        this.life -= 1
       });
     }, undefined, this);
 
@@ -197,7 +204,13 @@ class MapScene extends Phaser.Scene {
 
   // Firma corretta per Phaser.Scene
   override update() {
-    if (this.death) {
+    console.log(this.life)
+    if (this.life <= 0) {
+      alert("SEI MORTO")
+      this.life = 3;
+    }
+
+    if (this.hit) {
       return;
     }
 

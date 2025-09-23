@@ -65,6 +65,40 @@
                  "width":0,
                  "x":103.5,
                  "y":55
+                }, 
+                {
+                 "height":0,
+                 "id":20,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"sprite",
+                         "type":"string",
+                         "value":"slime"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":34,
+                 "y":71.5
+                }, 
+                {
+                 "height":0,
+                 "id":22,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"sprite",
+                         "type":"string",
+                         "value":"slime"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":76,
+                 "y":85.5
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -73,7 +107,7 @@
          "y":0
         }],
  "nextlayerid":4,
- "nextobjectid":20,
+ "nextobjectid":23,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.11.2",
