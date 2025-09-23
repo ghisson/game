@@ -37,7 +37,8 @@ class MapScene extends Phaser.Scene {
   private isAttacking = false;
   private wasd!: Record<'up' | 'left' | 'down' | 'right', Phaser.Input.Keyboard.Key>;
   private slimes!: Phaser.Physics.Arcade.Group;
-
+  private startTime = 0;   // ⏱ memorizza quando inizia
+  private survivedTime = 0;
 
   private facing: 'down' | 'right' | 'up' | 'left' = "down";
 
@@ -200,14 +201,19 @@ class MapScene extends Phaser.Scene {
 
     // Input
     this.cursors = this.input.keyboard!.createCursorKeys();
+
+    this.startTime = this.time.now;
+
   }
 
   // Firma corretta per Phaser.Scene
   override update() {
     console.log(this.life)
     if (this.life <= 0) {
-      alert("SEI MORTO")
+      this.survivedTime = Math.floor((this.time.now - this.startTime) / 1000); // secondi
+      alert("SEI MORTO, hai fatto "+this.survivedTime+" punti")
       this.life = 3;
+      this.startTime=this.time.now
     }
 
     if (this.hit) {
