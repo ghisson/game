@@ -13,11 +13,11 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit() {
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
-      width: 320,
-      height: 240,
+      width: 640,
+      height: 480,
       parent: this.host.nativeElement,
       pixelArt: true,
-      physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, debug: false } },
+      physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, debug: true } },
       scene: [MapScene]
     };
     this.game = new Phaser.Game(config);
@@ -39,6 +39,7 @@ class MapScene extends Phaser.Scene {
   private slimes!: Phaser.Physics.Arcade.Group;
   private startTime = 0;   // ⏱ memorizza quando inizia
   private survivedTime = 0;
+  private map: any
 
   private facing: 'down' | 'right' | 'up' | 'left' = "down";
 
@@ -46,8 +47,10 @@ class MapScene extends Phaser.Scene {
 
   preload() {
     // ✅ carica la mappa JSON e il tileset PNG
-    this.load.tilemapTiledJSON('map', 'assets/maps/mappa-slime.json');
+    this.load.tilemapTiledJSON('map', 'assets/maps/mappa_grande.json');
     this.load.image('terreno', 'assets/tiles/terreno.png');
+    this.load.image('case', 'assets/tiles/case.png');
+
 
     // sprite del player
     this.load.spritesheet('player', 'assets/sprites/player.png', {
@@ -60,15 +63,22 @@ class MapScene extends Phaser.Scene {
   }
 
   create() {
-    const map = this.make.tilemap({ key: 'map' });
+    this.map = this.make.tilemap({ key: 'map' });
+
+    this.physics.world.setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
+
 
     // ⚠️ "terreno" deve essere il NOME del tileset in Tiled
-    const tiles = map.addTilesetImage('terreno', 'terreno');
+    const tiles = this.map.addTilesetImage('terreno', 'terreno');
+    const house_tiles = this.map.addTilesetImage("case", "case")
+
+    const tilesets = [tiles, house_tiles].filter(Boolean) as Phaser.Tilemaps.Tileset[];
+
 
     // ⚠️ usa i NOMI DEI LAYER come in Tiled (es. "ground" e "walls")
-    map.createLayer('ground', tiles!, 0, 0);
-    this.walls = map.createLayer('walls', tiles!, 0, 0) ?? undefined;
-
+    this.map.createLayer('ground', tilesets!, 0, 0);
+    this.walls = this.map.createLayer('walls', tilesets!, 0, 0) ?? undefined;
+    this.walls?.setDepth(999);
     // Abilita collisione sui tile con proprietà { collider: true }
     this.walls?.setCollisionByProperty({ collider: true });
 
@@ -99,11 +109,12 @@ class MapScene extends Phaser.Scene {
     */
     this.slimes = this.physics.add.group();
 
-    const objLayer = map.getObjectLayer('Objects');
-    objLayer?.objects.forEach(o => {
+    const objLayer = this.map.getObjectLayer('Objects');
+    objLayer?.objects.forEach((o: Phaser.Types.Tilemaps.TiledObject) => {
       const props = Object.fromEntries((o.properties ?? []).map((p: any) => [p.name, p.value]));
       if (props['sprite'] === 'slime') {
         // crea anim solo una volta
+        
         makeRowAnim(this, 'slime-idle', 0, {
           fps: 8,
           count: 4,
@@ -155,6 +166,8 @@ class MapScene extends Phaser.Scene {
     // --- player ---
     this.player = this.physics.add.sprite(96, 96, 'player', 0);
     this.player.setSize(24, 30).setOffset(12, 18); // hitbox un po' più bassa (opzionale)
+    this.player.setDepth(10); // sopra i muri bassi
+
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.keyAttack = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.wasd = this.input.keyboard!.addKeys({
@@ -183,7 +196,7 @@ class MapScene extends Phaser.Scene {
       const player = obj1 as Phaser.Physics.Arcade.Sprite;
       const slime = obj2 as Phaser.Physics.Arcade.Sprite;
       const dir = new Phaser.Math.Vector2(player.x - slime.x, player.y - slime.y).normalize();
-      player.setVelocity(dir.x * 180, dir.y * 180);
+      player.setVelocity(dir.x * 50, dir.y * 50);
       player.setTintFill(0xffffff);
       this.time.delayedCall(120, () => player.clearTint());
       this.hit = true
@@ -195,7 +208,7 @@ class MapScene extends Phaser.Scene {
     }, undefined, this);
 
     // Camera
-    this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+    this.cameras.main.setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
     this.cameras.main.setZoom(2);
 
@@ -208,12 +221,19 @@ class MapScene extends Phaser.Scene {
 
   // Firma corretta per Phaser.Scene
   override update() {
+    this.walls?.setDepth(999);
+    this.player.setDepth(10);
+    if (this.time.now % 5 == 0) {
+      this.createSlime()
+    }
+
     console.log(this.life)
     if (this.life <= 0) {
       this.survivedTime = Math.floor((this.time.now - this.startTime) / 1000); // secondi
-      alert("SEI MORTO, hai fatto "+this.survivedTime+" punti")
-      this.life = 3;
-      this.startTime=this.time.now
+      alert("SEI MORTO, hai fatto " + this.survivedTime + " punti");
+      this.life = 3
+      // restart scena → ricrea player, slimes, mappa ecc.
+      this.scene.restart();
     }
 
     if (this.hit) {
@@ -302,6 +322,41 @@ class MapScene extends Phaser.Scene {
       }
     });
   }
+
+  private createSlime() {
+    const x = Phaser.Math.Between(0, this.map.widthInPixels);
+    const y = Phaser.Math.Between(0, this.map.heightInPixels);
+
+    const slime = this.physics.add.sprite(x, y, 'slime', 0);
+    slime.play('slime-idle');
+
+    // hitbox più tonda (opzionale)
+    slime.body.setCircle(10, 6, 8); // raggio 12 dentro 32x32
+    slime.setDepth(10);
+    slime.setBounce(1, 1);               // rimbalzo elastico
+    slime.setCollideWorldBounds(true);
+
+    this.slimes.add(slime);
+    this.time.addEvent({
+      delay: 200,
+      loop: true,
+      callback: () => {
+        const dirs = [
+          { vx: 50, vy: 0 },  // right
+          { vx: -50, vy: 0 },  // left
+          { vx: 0, vy: 50 }, // down
+          { vx: 0, vy: -50 }, // up
+          { vx: -50, vy: +50 }, //basso a sx
+          { vx: +50, vy: +50 }, //in basso a dx
+          { vx: -50, vy: -50 }, //in alto a dx
+          { vx: +50, vy: +50 } //in alto a sx
+
+        ];
+        const choice = Phaser.Math.RND.pick(dirs);
+        slime.setVelocity(choice.vx, choice.vy);
+      }
+    });
+  }
 }
 
 
@@ -337,6 +392,7 @@ function makeRowAnim(
 
   const start = row * cols + fromCol;
   const end = row * cols + toCol;
+  if (scene.anims.exists(key)) return;
 
   scene.anims.create({
     key,
