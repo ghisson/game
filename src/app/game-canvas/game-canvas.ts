@@ -262,7 +262,6 @@ class MapScene extends Phaser.Scene {
       if (children.length === 0) return;
 
       const zone = Phaser.Utils.Array.GetRandom(children) as Phaser.GameObjects.Zone;
-      console.log(!this.tp_now ," ", this.facing==="up")
       if (!this.tp_now && this.facing==="up") {
         this.player.x = zone.x
         this.player.y = zone.y+10
