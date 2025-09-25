@@ -31,6 +31,8 @@ class MapScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private player!: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
   private walls?: Phaser.Tilemaps.TilemapLayer;
+  private ground?: Phaser.Tilemaps.TilemapLayer;
+
   private hit: boolean = false
   private keyAttack: any;
   private life = 3;
@@ -40,6 +42,9 @@ class MapScene extends Phaser.Scene {
   private startTime = 0;   // ⏱ memorizza quando inizia
   private survivedTime = 0;
   private map: any
+  private validSpawnTiles: { tx: number; ty: number }[] = [];
+  private tp_now = false;
+
 
   private facing: 'down' | 'right' | 'up' | 'left' = "down";
 
@@ -47,7 +52,7 @@ class MapScene extends Phaser.Scene {
 
   preload() {
     // ✅ carica la mappa JSON e il tileset PNG
-    this.load.tilemapTiledJSON('map', 'assets/maps/mappa_grande.json');
+    this.load.tilemapTiledJSON('map', 'assets/maps/mappa_1.json');
     this.load.image('terreno', 'assets/tiles/terreno.png');
     this.load.image('case', 'assets/tiles/case.png');
 
@@ -76,7 +81,7 @@ class MapScene extends Phaser.Scene {
 
 
     // ⚠️ usa i NOMI DEI LAYER come in Tiled (es. "ground" e "walls")
-    this.map.createLayer('ground', tilesets!, 0, 0);
+    this.ground = this.map.createLayer('ground', tilesets!, 0, 0);
     this.walls = this.map.createLayer('walls', tilesets!, 0, 0) ?? undefined;
     this.walls?.setDepth(999);
     // Abilita collisione sui tile con proprietà { collider: true }
@@ -114,7 +119,7 @@ class MapScene extends Phaser.Scene {
       const props = Object.fromEntries((o.properties ?? []).map((p: any) => [p.name, p.value]));
       if (props['sprite'] === 'slime') {
         // crea anim solo una volta
-        
+
         makeRowAnim(this, 'slime-idle', 0, {
           fps: 8,
           count: 4,
@@ -216,16 +221,68 @@ class MapScene extends Phaser.Scene {
     this.cursors = this.input.keyboard!.createCursorKeys();
 
     this.startTime = this.time.now;
+    this.setupValidSpawn();
 
+    this.time.addEvent({
+      delay: 1200, // ogni 1.2s
+      loop: true,
+      callback: () => this.createSlime()
+    });
+
+    //setuppo i tp
+    // --- TP: trigger 8x8 centrato dentro ogni rettangolo 16x16 di "tp"
+    const tpLayer = this.map.getObjectLayer('tp');
+    const tpGroup = this.physics.add.staticGroup();
+
+    tpLayer?.objects.forEach((o: Phaser.Types.Tilemaps.TiledObject) => {
+      const ow = o.width ?? 16;
+      const oh = o.height ?? 16;
+
+      // centro del rettangolo di Tiled (x,y = top-left)
+      const cx = (o.x ?? 0) + ow / 2;
+      const cy = (o.y ?? 0) + oh / 2;
+
+      // props da Tiled -> dizionario semplice
+      const props = Object.fromEntries((o.properties ?? []).map((p: any) => [p.name, p.value]));
+
+      // zona 12x12 con collider 8x8 centrato
+      const zone = this.add.zone(cx, cy, 12, 12).setName(o.name || '');
+      this.physics.world.enable(zone, Phaser.Physics.Arcade.STATIC_BODY);
+      const body = zone.body as Phaser.Physics.Arcade.StaticBody;
+      body.setSize(8, 8).updateFromGameObject();
+
+      zone.setData('props', props);
+      zone.setData('raw', o);
+
+      tpGroup.add(zone);
+    });
+
+    this.physics.add.overlap(this.player, tpGroup, (_p, z: any) => {
+      const children = tpGroup.getChildren();              // GameObject[]
+      if (children.length === 0) return;
+
+      const zone = Phaser.Utils.Array.GetRandom(children) as Phaser.GameObjects.Zone;
+      console.log(!this.tp_now ," ", this.facing==="up")
+      if (!this.tp_now && this.facing==="up") {
+        this.player.x = zone.x
+        this.player.y = zone.y+10
+        this.tp_now = true;
+
+        this.time.addEvent({
+          delay: 1200, // dopo 1.2 sec
+          loop: false,
+          callback: () => { this.tp_now = false; }
+        });
+      }
+
+    });
   }
 
   // Firma corretta per Phaser.Scene
   override update() {
     this.walls?.setDepth(999);
     this.player.setDepth(10);
-    if (this.time.now % 5 == 0) {
-      this.createSlime()
-    }
+
 
     console.log(this.life)
     if (this.life <= 0) {
@@ -323,9 +380,34 @@ class MapScene extends Phaser.Scene {
     });
   }
 
+  private setupValidSpawn() {
+
+    this.ground?.forEachTile((t) => {
+      if (!t) return;                    // nessun tile
+      if (t.index == -1) return;
+      const tx = t.x, ty = t.y;
+
+      // esiste un tile di walls qui?
+      const w = this.walls?.getTileAt(tx, ty);
+      const isBlocked = !!w && ((w.properties as any)?.collider === true || w.index !== -1 && w.collides);
+
+      if (!isBlocked) {
+        this.validSpawnTiles.push({ tx, ty });
+      }
+    });
+  }
+
+  private pickSpawnWorldPos(): { x: number; y: number } {
+    const { tx, ty } = Phaser.Utils.Array.GetRandom(this.validSpawnTiles);
+
+    if (!this.ground) { return { x: 0, y: 0 } }
+
+    const x = this.ground.tileToWorldX(tx) + this.map.tileWidth / 2;
+    const y = this.ground.tileToWorldY(ty) + this.map.tileHeight / 2;
+    return { x: x, y: y };
+  }
   private createSlime() {
-    const x = Phaser.Math.Between(0, this.map.widthInPixels);
-    const y = Phaser.Math.Between(0, this.map.heightInPixels);
+    const { x, y } = this.pickSpawnWorldPos();
 
     const slime = this.physics.add.sprite(x, y, 'slime', 0);
     slime.play('slime-idle');
@@ -401,6 +483,9 @@ function makeRowAnim(
     repeat: opts.repeat ?? -1,
     yoyo: !!opts.yoyo
   });
+
 }
+
+
 
 
