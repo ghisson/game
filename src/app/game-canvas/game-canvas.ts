@@ -154,8 +154,8 @@ class MapScene extends Phaser.Scene {
               { vx: 0, vy: -50 }, // up
               { vx: -50, vy: +50 }, //basso a sx
               { vx: +50, vy: +50 }, //in basso a dx
-              { vx: -50, vy: -50 }, //in alto a dx
-              { vx: +50, vy: +50 } //in alto a sx
+              { vx: +50, vy: -50 }, //in alto a dx
+              { vx: -50, vy: -50 } //in alto a sx
 
             ];
             const choice = Phaser.Math.RND.pick(dirs);
